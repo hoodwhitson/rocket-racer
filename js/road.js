@@ -135,7 +135,7 @@ class Road {
     const total  = CONSTANTS.ROAD_SEGMENTS;
     const segLen = CONSTANTS.ROAD_SEGMENT_LENGTH;
     for (const car of this.traffic) {
-      car.segmentIndex = (car.segmentIndex + car.speed * dt / segLen * 60) % total;
+      car.segmentIndex = (car.segmentIndex + car.speed * dt / segLen) % total;
       if (car.segmentIndex < 0) car.segmentIndex += total;
     }
   }
