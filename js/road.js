@@ -328,7 +328,7 @@ class Road {
     ctx.globalAlpha = alpha;
 
     if (scenery.type === 'tree') {
-      const h = Math.max(4, scale * 880);
+      const h = Math.min(300, Math.max(4, scale * 880));
       const w = h * 0.55;
       ctx.fillStyle = '#5C3317';
       ctx.fillRect(x - w * 0.09, roadY - h * 0.38, w * 0.18, h * 0.38);
@@ -347,7 +347,7 @@ class Road {
       ctx.closePath();
       ctx.fill();
     } else {
-      const h = Math.max(3, scale * 660);
+      const h = Math.min(200, Math.max(3, scale * 660));
       const w = h * 1.5;
       ctx.fillStyle = '#888';
       ctx.fillRect(x - h * 0.06, roadY - h, h * 0.12, h);
