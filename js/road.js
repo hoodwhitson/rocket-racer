@@ -320,6 +320,7 @@ class Road {
     const W     = CONSTANTS.CANVAS_WIDTH;
     const alpha = Math.max(0, 1 - fogT * 1.05);
     if (alpha < 0.04) return;
+    if (scale > 0.15) return;  // skip scenery that's too close (would be off-screen)
 
     const roadW   = scale * CONSTANTS.ROAD_WIDTH * (W / 2);
     const x       = roadCenterX + scenery.side * roadW * 1.55;
