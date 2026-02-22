@@ -174,18 +174,12 @@ class Road {
     }
 
     // ── Draw pass: back-to-front (painter's algorithm) ───────────
-    let maxScreenY = H;   // hill-occlusion tracker
-
     for (let i = drawLen - 1; i >= 0; i--) {
       const p  = this._proj[i];
       const p2 = (i > 0) ? this._proj[i - 1] : p;
 
       const y1 = p.y;
       const y2 = p2.y;
-
-      // Hill occlusion: skip if this segment is below already-drawn road
-      if (y1 >= maxScreenY) continue;
-      maxScreenY = y1;
 
       const seg      = p.seg;
       const isLight  = seg.isLight;
