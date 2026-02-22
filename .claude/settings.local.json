@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:codeincomplete.com)",
+      "WebFetch(domain:jakesgordon.com)",
+      "WebSearch",
+      "WebFetch(domain:www.extentofthejam.com)",
+      "Bash(wc:*)",
+      "Bash(node:*)",
+      "Bash(python3:*)",
+      "Bash(git:*)",
+      "Bash(brew install:*)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}
