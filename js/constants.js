@@ -21,13 +21,14 @@ const CONSTANTS = {
   TOTAL_LEVELS: 10,
 
   // Road renderer
-  ROAD_SEGMENT_LENGTH: 200,       // world units per segment
-  ROAD_WIDTH: 0.75,               // normalized road half-width (1 = full half-screen at depth 1)
-  ROAD_SEGMENTS: 200,             // total segments in track
-  DRAW_LENGTH: 150,               // how many segments to draw ahead
+  ROAD_SEGMENT_LENGTH: 150,       // world units per segment (was 200)
+  ROAD_WIDTH: 0.75,               // normalized road half-width
+  ROAD_SEGMENTS: 500,             // total segments in track (was 200)
+  DRAW_LENGTH: 110,               // segments to draw ahead (was 150)
   CAMERA_HEIGHT: 1000,            // camera height above road
-  CAMERA_DEPTH: 0.84,             // field of view factor (1/tan(fov/2))
+  CAMERA_DEPTH: 0.78,             // FOV factor (was 0.84, wider for speed feel)
   FOG_DENSITY: 3.5,               // fog intensity exponent
+  STRIPE_GROUP: 3,                // segments per stripe alternation (was 4)
 
   // Road colors
   ROAD_COLOR_LIGHT: '#6b6b6b',
@@ -51,13 +52,13 @@ const CONSTANTS = {
   CENTRIFUGAL_FORCE: 0.3,
   OFFROAD_DECEL: 0.97,            // speed multiplier per tick when off-road
   OFFROAD_STEER_DECEL: 0.98,
-  COLLISION_RADIUS_X: 0.6,        // lateral collision threshold (world units)
+  COLLISION_RADIUS_X: 0.6,        // lateral collision threshold
   COLLISION_SPEED_PENALTY: 0.5,   // speed multiplier on collision
 
   // Player position
-  PLAYER_Z: 0.6,                  // depth fraction along screen for player car
-  PLAYER_SCREEN_X: 0.5,          // horizontal fraction (center)
-  PLAYER_SCREEN_Y_OFFSET: 0.1,   // y offset above road horizon from bottom
+  PLAYER_Z: 0.6,
+  PLAYER_SCREEN_X: 0.5,
+  PLAYER_SCREEN_Y_OFFSET: 0.1,
 
   // Car configs [topSpeedMult, accelMult, gripMult]
   CAR_CONFIGS: [
@@ -73,7 +74,13 @@ const CONSTANTS = {
   TRAFFIC_COLORS: ['#cc4444','#44cc44','#4444cc','#cccc44','#cc44cc','#44cccc','#ffffff','#ff8800'],
 
   // Finish line
-  FINISH_SEGMENT_INDEX: 185,      // segment index that triggers level complete
+  FINISH_SEGMENT_INDEX: 470,      // segment that triggers level complete (was 185)
+
+  // Checkpoints
+  CHECKPOINT_DISPLAY_TIME: 2.0,   // seconds to show checkpoint notification
+
+  // Crash animation
+  CRASH_DURATION: 1.5,            // seconds for crash tumble
 
   // Score
   SCORE_PER_SECOND: 10,
@@ -85,6 +92,7 @@ const CONSTANTS = {
   // UI
   HUD_PADDING: 16,
   HUD_FONT_SIZE: 10,
+  DASHBOARD_HEIGHT: 70,           // height of dashboard panel at bottom
 
   // Audio
   ENGINE_FREQ_MIN: 60,

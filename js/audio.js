@@ -7,22 +7,15 @@ class AudioManager {
   constructor() {
     /** @type {AudioContext|null} */
     this.ctx = null;
-
-    /** @type {OscillatorNode|null} Engine oscillator */
     this._engineOsc = null;
-    /** @type {GainNode|null} Engine gain */
+    this._engineOsc2 = null;
     this._engineGain = null;
-    /** @type {boolean} */
     this._engineRunning = false;
-    /** @type {boolean} */
     this._initialized = false;
-    /** @type {boolean} */
     this._muted = false;
   }
 
-  /**
-   * Initialize AudioContext on first user gesture (browser autoplay policy).
-   */
+  /** Initialize AudioContext on first user gesture. */
   init() {
     if (this._initialized) return;
     try {
@@ -33,10 +26,7 @@ class AudioManager {
     }
   }
 
-  /**
-   * Start the continuous engine hum.
-   * @param {number} speedPercent - 0.0 to 1.0
-   */
+  /** @param {number} speedPercent */
   startEngine(speedPercent) {
     if (!this._initialized || !this.ctx || this._muted) return;
     if (this._engineRunning) return;
@@ -45,14 +35,12 @@ class AudioManager {
     this._engineOsc = ctx.createOscillator();
     this._engineOsc.type = 'sawtooth';
 
-    // Secondary harmonic oscillator for richer engine sound
     this._engineOsc2 = ctx.createOscillator();
     this._engineOsc2.type = 'square';
 
     this._engineGain = ctx.createGain();
     this._engineGain.gain.value = 0.08;
 
-    // Low-pass filter to soften sawtooth
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 800;
@@ -71,10 +59,7 @@ class AudioManager {
     this._engineRunning = true;
   }
 
-  /**
-   * Update engine pitch based on current speed.
-   * @param {number} speedPercent - 0.0 to 1.0
-   */
+  /** @param {number} speedPercent */
   updateEngine(speedPercent) {
     if (!this._initialized || !this.ctx || !this._engineRunning || this._muted) return;
     const freq = Math.max(0.001, this._speedToFreq(speedPercent));
@@ -87,9 +72,6 @@ class AudioManager {
     this._engineOsc2.frequency.exponentialRampToValueAtTime(Math.max(0.001, freq * 1.5), now + 0.1);
   }
 
-  /**
-   * Stop the engine hum.
-   */
   stopEngine() {
     if (!this._engineRunning) return;
     try {
@@ -102,15 +84,12 @@ class AudioManager {
     this._engineGain = null;
   }
 
-  /**
-   * Play crash/collision sound — distorted noise burst.
-   */
+  /** Crash noise burst. */
   playCrash() {
     if (!this._initialized || !this.ctx || this._muted) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
 
-    // White noise via buffer
     const bufLen = ctx.sampleRate * 0.4;
     const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
     const data = buf.getChannelData(0);
@@ -119,7 +98,6 @@ class AudioManager {
     const src = ctx.createBufferSource();
     src.buffer = buf;
 
-    // Distortion via wave shaper
     const distort = ctx.createWaveShaper();
     distort.curve = this._makeDistortionCurve(400);
 
@@ -134,77 +112,86 @@ class AudioManager {
     src.stop(now + 0.4);
   }
 
-  /**
-   * Play level complete jingle.
-   */
-  playLevelComplete() {
+  /** Tire screech on crash. */
+  playCrashScreech() {
     if (!this._initialized || !this.ctx || this._muted) return;
     const ctx = this.ctx;
-    const notes = [523, 659, 784, 1047]; // C5 E5 G5 C6
     const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(200, now + 0.5);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1200;
+    filter.Q.value = 3;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.55);
+  }
+
+  /** Level complete jingle. */
+  playLevelComplete() {
+    if (!this._initialized || !this.ctx || this._muted) return;
+    const notes = [523, 659, 784, 1047];
+    const now = this.ctx.currentTime;
     notes.forEach((freq, i) => {
       this._playNote('square', freq, now + i * 0.15, 0.15, 0.12);
     });
   }
 
-  /**
-   * Play countdown beep.
-   */
+  /** Countdown beep. */
   playCountdownBeep() {
     if (!this._initialized || !this.ctx || this._muted) return;
     this._playNote('square', 880, this.ctx.currentTime, 0.1, 0.15);
   }
 
-  /**
-   * Play celebration fanfare (win screen).
-   */
+  /** Checkpoint reached — two ascending notes. */
+  playCheckpointBeep() {
+    if (!this._initialized || !this.ctx || this._muted) return;
+    const now = this.ctx.currentTime;
+    this._playNote('square', 660, now, 0.1, 0.15);
+    this._playNote('square', 880, now + 0.12, 0.15, 0.15);
+  }
+
+  /** Celebration fanfare. */
   playCelebrationFanfare() {
     if (!this._initialized || !this.ctx || this._muted) return;
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    // C major arpeggio then chord
+    const now = this.ctx.currentTime;
     const melody = [523, 659, 784, 1047, 784, 659, 523];
     melody.forEach((freq, i) => {
       this._playNote('square', freq, now + i * 0.12, 0.12, 0.15);
     });
-    // Final chord
     [523, 659, 784].forEach(freq => {
       this._playNote('sawtooth', freq, now + melody.length * 0.12, 0.4, 0.08);
     });
   }
 
-  /**
-   * Play a game-over descending sound.
-   */
+  /** Game over descending sound. */
   playGameOver() {
     if (!this._initialized || !this.ctx || this._muted) return;
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
+    const now = this.ctx.currentTime;
     const notes = [440, 370, 311, 261];
     notes.forEach((freq, i) => {
       this._playNote('sawtooth', freq, now + i * 0.2, 0.2, 0.1);
     });
   }
 
-  // ---- Private helpers ----
+  // ── Private ──
 
-  /**
-   * Map speed (0–1) to engine frequency.
-   * @param {number} t
-   * @returns {number}
-   */
   _speedToFreq(t) {
     return CONSTANTS.ENGINE_FREQ_MIN + (CONSTANTS.ENGINE_FREQ_MAX - CONSTANTS.ENGINE_FREQ_MIN) * Math.pow(Math.max(0, t), 0.6);
   }
 
-  /**
-   * Play a single note.
-   * @param {string} type - Oscillator type
-   * @param {number} freq - Frequency in Hz
-   * @param {number} startTime - AudioContext time
-   * @param {number} duration - Duration in seconds
-   * @param {number} volume - Gain (0–1)
-   */
   _playNote(type, freq, startTime, duration, volume) {
     const ctx = this.ctx;
     const osc = ctx.createOscillator();
@@ -221,11 +208,6 @@ class AudioManager {
     osc.stop(startTime + duration + 0.05);
   }
 
-  /**
-   * Generate a distortion curve for WaveShaper.
-   * @param {number} amount
-   * @returns {Float32Array}
-   */
   _makeDistortionCurve(amount) {
     const n = 256;
     const curve = new Float32Array(n);

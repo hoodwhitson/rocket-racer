@@ -1,46 +1,41 @@
 /**
  * player.js
- * Player — physics, input handling, car sprite drawing, collision detection.
+ * Player — physics, input handling, enhanced car sprites, crash animation.
  */
 class Player {
-  /**
-   * @param {HTMLCanvasElement} canvas
-   */
+  /** @param {HTMLCanvasElement} canvas */
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
 
-    // --- Physics state ---
-    /** @type {number} Speed in world units / tick (at 60fps) */
+    // Physics state
     this.speed = 0;
-    /** @type {number} Lateral position, -2 (far left) to +2 (far right) */
     this.x = 0;
-    /** @type {number} World-space Z position */
     this.z = 0;
-    /** @type {number} Current steer input: -1, 0, +1 */
     this.steerInput = 0;
 
-    // --- Car config (set by setCarConfig) ---
+    // Car config
     this.carConfig = null;
 
-    // --- Input state ---
-    this._keys = {
-      left: false,
-      right: false,
-      accel: false,
-      brake: false,
-    };
+    // Input state
+    this._keys = { left: false, right: false, accel: false, brake: false };
 
-    // --- Offscreen sprite canvases ---
-    this._sprites = {
-      straight: null,
-      left: null,
-      right: null,
-    };
+    // Offscreen sprite canvases (120x80 for more detail)
+    this._sprites = { straight: null, left: null, right: null };
 
-    // --- Collision state ---
+    // Collision state
     this.isColliding = false;
     this._collisionTimer = 0;
+
+    // Crash animation state
+    this._crashState = {
+      active: false,
+      timer: 0,
+      duration: CONSTANTS.CRASH_DURATION,
+      spinAngle: 0,
+      bounceY: 0,
+      direction: 1,
+    };
 
     // Bind input handlers
     this._onKeyDown = this._onKeyDown.bind(this);
@@ -48,26 +43,16 @@ class Player {
     document.addEventListener('keydown', this._onKeyDown);
     document.addEventListener('keyup',   this._onKeyUp);
 
-    // Touch button bindings (set up in bindTouchControls)
     this._touchHandlers = {};
   }
 
-  /**
-   * Set the active car configuration and pre-render sprites.
-   * @param {object} cfg - Car config from CONSTANTS.CAR_CONFIGS
-   */
+  /** @param {object} cfg - Car config from CONSTANTS.CAR_CONFIGS */
   setCarConfig(cfg) {
     this.carConfig = cfg;
     this._buildSprites(cfg);
   }
 
-  /**
-   * Bind touch buttons.
-   * @param {HTMLElement} btnLeft
-   * @param {HTMLElement} btnRight
-   * @param {HTMLElement} btnAccel
-   * @param {HTMLElement} btnBrake
-   */
+  /** Bind touch buttons. */
   bindTouchControls(btnLeft, btnRight, btnAccel, btnBrake) {
     const bind = (el, key) => {
       const down = () => { this._keys[key] = true; };
@@ -83,9 +68,7 @@ class Player {
     bind(btnBrake, 'brake');
   }
 
-  /**
-   * Reset player for a new level.
-   */
+  /** Reset player for a new level. */
   reset() {
     this.speed = 0;
     this.x = 0;
@@ -93,21 +76,40 @@ class Player {
     this.steerInput = 0;
     this.isColliding = false;
     this._collisionTimer = 0;
+    this._crashState.active = false;
+    this._crashState.timer = 0;
+  }
+
+  /** @returns {boolean} True if crash animation is currently playing */
+  isCrashing() {
+    return this._crashState.active;
   }
 
   /**
    * Update player physics.
-   * @param {number} dt - Delta time in seconds
-   * @param {object} currentSegment - Road segment player is on
-   * @param {Array} traffic - Traffic cars array
-   * @returns {{ collided: boolean }} Result flags
+   * @param {number} dt
+   * @param {object} currentSegment
+   * @param {Array} traffic
+   * @returns {{ collided: boolean }}
    */
   update(dt, currentSegment, traffic) {
     const C = CONSTANTS;
     const cfg = this.carConfig || C.CAR_CONFIGS[3];
-    const mult = dt * 60;  // normalize to 60fps
+    const mult = dt * 60;
 
-    // --- Collision cool-down ---
+    // ── Crash animation active ──
+    if (this._crashState.active) {
+      this._updateCrash(dt);
+      // During crash, car decelerates
+      this.speed *= Math.pow(0.95, mult);
+      this.z += this.speed * dt;
+      const trackLength = C.ROAD_SEGMENTS * C.ROAD_SEGMENT_LENGTH;
+      if (this.z >= trackLength) this.z -= trackLength;
+      if (this.z < 0) this.z += trackLength;
+      return { collided: false };
+    }
+
+    // ── Collision cool-down ──
     if (this._collisionTimer > 0) {
       this._collisionTimer -= dt;
       if (this._collisionTimer < 0) {
@@ -116,7 +118,7 @@ class Player {
       }
     }
 
-    // --- Acceleration ---
+    // ── Acceleration ──
     const maxSpeed = C.PLAYER_MAX_SPEED * cfg.topSpeedMult;
     if (this._keys.accel) {
       this.speed += C.PLAYER_ACCEL * cfg.accelMult * mult;
@@ -127,7 +129,7 @@ class Player {
     }
     this.speed = Math.max(0, Math.min(maxSpeed, this.speed));
 
-    // --- Steering ---
+    // ── Steering ──
     this.steerInput = 0;
     if (this._keys.left)  this.steerInput = -1;
     if (this._keys.right) this.steerInput =  1;
@@ -135,42 +137,43 @@ class Player {
     const steerAmount = C.PLAYER_STEER_SPEED * cfg.gripMult * mult;
     this.x += this.steerInput * steerAmount * (this.speed / maxSpeed + 0.3);
 
-    // --- Centrifugal drift from road curve ---
+    // ── Centrifugal drift ──
     if (currentSegment) {
       const speedPct = this.speed / maxSpeed;
       this.x -= currentSegment.curve * speedPct * C.CENTRIFUGAL_FORCE * mult;
     }
 
-    // --- Off-road penalty ---
-    const offRoad = Math.abs(this.x) > 1.0;
-    if (offRoad) {
+    // ── Off-road penalty ──
+    if (Math.abs(this.x) > 1.0) {
       this.speed *= Math.pow(C.OFFROAD_DECEL, mult);
     }
 
-    // Clamp lateral position
     this.x = Math.max(-2.0, Math.min(2.0, this.x));
 
-    // --- Advance Z position ---
+    // ── Advance Z ──
     this.z += this.speed * dt;
-
-    // Wrap Z around track length
-    const trackLength = CONSTANTS.ROAD_SEGMENTS * CONSTANTS.ROAD_SEGMENT_LENGTH;
+    const trackLength = C.ROAD_SEGMENTS * C.ROAD_SEGMENT_LENGTH;
     if (this.z >= trackLength) this.z -= trackLength;
     if (this.z < 0) this.z += trackLength;
 
-    // --- Traffic collision ---
+    // ── Traffic collision ──
     let collided = false;
     if (this._collisionTimer <= 0 && traffic) {
-      const playerSegIdx = Math.floor(this.z / CONSTANTS.ROAD_SEGMENT_LENGTH) % CONSTANTS.ROAD_SEGMENTS;
+      const playerSegIdx = Math.floor(this.z / C.ROAD_SEGMENT_LENGTH) % C.ROAD_SEGMENTS;
       for (const car of traffic) {
-        const carSegIdx = Math.floor(car.segmentIndex) % CONSTANTS.ROAD_SEGMENTS;
+        const carSegIdx = Math.floor(car.segmentIndex) % C.ROAD_SEGMENTS;
         const segDiff = Math.abs(playerSegIdx - carSegIdx);
-        if (segDiff <= 2 || segDiff >= CONSTANTS.ROAD_SEGMENTS - 2) {
+        if (segDiff <= 2 || segDiff >= C.ROAD_SEGMENTS - 2) {
           if (Math.abs(this.x - car.x) < C.COLLISION_RADIUS_X) {
-            // Collision!
             this.speed *= C.COLLISION_SPEED_PENALTY;
             this.isColliding = true;
-            this._collisionTimer = 1.5;  // invincibility seconds
+            this._collisionTimer = C.CRASH_DURATION + 0.5;
+            // Start crash animation
+            this._crashState.active = true;
+            this._crashState.timer = 0;
+            this._crashState.spinAngle = 0;
+            this._crashState.bounceY = 0;
+            this._crashState.direction = car.x > this.x ? -1 : 1;
             collided = true;
             break;
           }
@@ -181,15 +184,12 @@ class Player {
     return { collided };
   }
 
-  /**
-   * Draw the player car at the bottom-center of the canvas.
-   */
+  /** Draw the player car. */
   draw() {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
     const H = CONSTANTS.CANVAS_HEIGHT;
 
-    // Choose sprite based on steer direction
     let sprite;
     if (this.steerInput < 0) sprite = this._sprites.left;
     else if (this.steerInput > 0) sprite = this._sprites.right;
@@ -199,47 +199,68 @@ class Player {
 
     const sw = sprite.width;
     const sh = sprite.height;
+    const drawX = W / 2 - sw / 2;
+    const drawY = H - sh - 20;
 
-    // Collision flash
     ctx.save();
-    if (this.isColliding && Math.floor(this._collisionTimer * 10) % 2 === 0) {
+
+    // Crash animation transform
+    if (this._crashState.active) {
+      const cs = this._crashState;
+      const cx = drawX + sw / 2;
+      const cy = drawY + sh / 2;
+      ctx.translate(cx, cy - cs.bounceY);
+      ctx.rotate(cs.spinAngle);
+      ctx.translate(-cx, -cy);
+      // Flash during crash
+      if (Math.floor(cs.timer * 12) % 3 === 0) ctx.globalAlpha = 0.4;
+    } else if (this.isColliding && Math.floor(this._collisionTimer * 10) % 2 === 0) {
       ctx.globalAlpha = 0.5;
     }
 
-    // Center bottom of screen
-    const drawX = W / 2 - sw / 2;
-    const drawY = H - sh - 20;
     ctx.drawImage(sprite, drawX, drawY);
-
     ctx.restore();
   }
 
-  /**
-   * Get current speed as a 0–1 fraction of max speed.
-   * @returns {number}
-   */
+  /** @returns {number} 0-1 speed fraction */
   getSpeedPercent() {
     const maxSpeed = CONSTANTS.PLAYER_MAX_SPEED * (this.carConfig ? this.carConfig.topSpeedMult : 1);
     return this.speed / maxSpeed;
   }
 
-  /**
-   * Get the camera X offset driven by player X (for road renderer).
-   * @returns {number}
-   */
+  /** @returns {number} Camera X offset */
   getCameraX() {
     return this.x * 500;
   }
 
-  /**
-   * Destroy: remove event listeners.
-   */
+  /** Remove event listeners. */
   destroy() {
     document.removeEventListener('keydown', this._onKeyDown);
     document.removeEventListener('keyup', this._onKeyUp);
   }
 
-  // ---- Private ----
+  // ── Private ──
+
+  _updateCrash(dt) {
+    const cs = this._crashState;
+    cs.timer += dt;
+    cs.spinAngle += cs.direction * dt * 6;
+
+    // Parabolic bounce arc
+    const t = cs.timer / cs.duration;
+    cs.bounceY = Math.sin(t * Math.PI) * 80;
+
+    // Lateral drift
+    this.x += cs.direction * dt * 0.5;
+    this.x = Math.max(-2.0, Math.min(2.0, this.x));
+
+    if (cs.timer >= cs.duration) {
+      cs.active = false;
+      cs.timer = 0;
+      cs.spinAngle = 0;
+      cs.bounceY = 0;
+    }
+  }
 
   /** @param {KeyboardEvent} e */
   _onKeyDown(e) {
@@ -266,24 +287,23 @@ class Player {
   }
 
   /**
-   * Pre-render car sprites to offscreen canvases.
-   * @param {object} cfg - Car config
+   * Pre-render car sprites to offscreen canvases (120x80).
+   * @param {object} cfg
    */
   _buildSprites(cfg) {
-    const W = 100;
-    const H = 70;
-
+    const W = 120;
+    const H = 80;
     this._sprites.straight = this._drawCarSprite(cfg, W, H, 0);
     this._sprites.left     = this._drawCarSprite(cfg, W, H, -1);
     this._sprites.right    = this._drawCarSprite(cfg, W, H, 1);
   }
 
   /**
-   * Draw a car sprite to an offscreen canvas.
+   * Draw an enhanced car sprite (rear view, sports car style).
    * @param {object} cfg
    * @param {number} W
    * @param {number} H
-   * @param {number} lean - -1 left, 0 straight, 1 right
+   * @param {number} lean
    * @returns {HTMLCanvasElement}
    */
   _drawCarSprite(cfg, W, H, lean) {
@@ -291,67 +311,129 @@ class Player {
     oc.width = W;
     oc.height = H;
     const ctx = oc.getContext('2d');
-
-    const leanPx = lean * 6;
+    const leanPx = lean * 7;
+    const cx = W / 2 + leanPx;
+    const cy = H / 2 + 4;
 
     // Shadow
-    ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath();
-    ctx.ellipse(W / 2 + leanPx, H - 4, W * 0.36, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, H - 3, W * 0.38, 6, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
 
-    // Car body (main rectangle)
+    // Body outline (silhouette)
     ctx.save();
-    ctx.translate(W / 2 + leanPx, H / 2);
-    ctx.fillStyle = cfg.bodyColor;
-    ctx.fillRect(-38, -10, 76, 28);
+    ctx.translate(cx, cy);
 
-    // Windshield / cabin
+    // Lower body (darker)
+    ctx.fillStyle = cfg.bodyColor;
+    ctx.beginPath();
+    ctx.moveTo(-44, -6);
+    // Curved hood line
+    ctx.quadraticCurveTo(-44, -14, -38, -14);
+    ctx.lineTo(38, -14);
+    ctx.quadraticCurveTo(44, -14, 44, -6);
+    ctx.lineTo(44, 16);
+    ctx.lineTo(-44, 16);
+    ctx.closePath();
+    ctx.fill();
+
+    // Upper body (lighter accent)
     ctx.fillStyle = cfg.color;
     ctx.beginPath();
-    ctx.moveTo(-22, -10);
-    ctx.lineTo(-18, -28);
-    ctx.lineTo(18, -28);
-    ctx.lineTo(22, -10);
+    ctx.moveTo(-44, -6);
+    ctx.quadraticCurveTo(-44, -14, -38, -14);
+    ctx.lineTo(38, -14);
+    ctx.quadraticCurveTo(44, -14, 44, -6);
+    ctx.lineTo(44, 4);
+    ctx.lineTo(-44, 4);
     ctx.closePath();
     ctx.fill();
 
-    // Windshield glass
-    ctx.fillStyle = 'rgba(150, 220, 255, 0.75)';
+    // Cabin / windshield frame
+    ctx.fillStyle = cfg.color;
     ctx.beginPath();
-    ctx.moveTo(-16, -12);
-    ctx.lineTo(-13, -26);
-    ctx.lineTo(13, -26);
-    ctx.lineTo(16, -12);
+    ctx.moveTo(-24, -14);
+    ctx.lineTo(-20, -32);
+    ctx.lineTo(20, -32);
+    ctx.lineTo(24, -14);
     ctx.closePath();
     ctx.fill();
+
+    // Rear spoiler
+    ctx.fillStyle = cfg.bodyColor;
+    ctx.fillRect(-28, -35, 56, 4);
+    ctx.fillRect(-30, -36, 4, 6);
+    ctx.fillRect(26, -36, 4, 6);
+
+    // Windshield glass
+    ctx.fillStyle = 'rgba(140,210,255,0.75)';
+    ctx.beginPath();
+    ctx.moveTo(-18, -15);
+    ctx.lineTo(-15, -30);
+    ctx.lineTo(15, -30);
+    ctx.lineTo(18, -15);
+    ctx.closePath();
+    ctx.fill();
+
+    // Body outline stroke
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-44, 16);
+    ctx.lineTo(-44, -6);
+    ctx.quadraticCurveTo(-44, -14, -38, -14);
+    ctx.lineTo(-24, -14);
+    ctx.lineTo(-20, -32);
+    ctx.lineTo(20, -32);
+    ctx.lineTo(24, -14);
+    ctx.lineTo(38, -14);
+    ctx.quadraticCurveTo(44, -14, 44, -6);
+    ctx.lineTo(44, 16);
+    ctx.stroke();
 
     // Wheels
     ctx.fillStyle = '#111';
-    const wW = 14, wH = 10;
-    ctx.fillRect(-42, -8, wW, wH);   // front-left
-    ctx.fillRect(28, -8, wW, wH);    // front-right
-    ctx.fillRect(-42, 10, wW, wH);   // rear-left
-    ctx.fillRect(28, 10, wW, wH);    // rear-right
+    ctx.fillRect(-48, -10, 14, 12);
+    ctx.fillRect(34, -10, 14, 12);
+    ctx.fillRect(-48, 8, 14, 12);
+    ctx.fillRect(34, 8, 14, 12);
+    // Wheel highlights
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-46, -9, 10, 10);
+    ctx.fillRect(36, -9, 10, 10);
+    ctx.fillRect(-46, 9, 10, 10);
+    ctx.fillRect(36, 9, 10, 10);
 
-    // Wheel highlight
-    ctx.fillStyle = '#444';
-    ctx.fillRect(-40, -7, 10, 8);
-    ctx.fillRect(30, -7, 10, 8);
-    ctx.fillRect(-40, 11, 10, 8);
-    ctx.fillRect(30, 11, 10, 8);
+    // Tail lights (glowing red)
+    ctx.fillStyle = '#ff2222';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(-36, 12, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(36, 12, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Headlight glow (visible on road ahead — subtle light cone)
+    ctx.fillStyle = 'rgba(255,255,200,0.08)';
+    ctx.beginPath();
+    ctx.moveTo(-30, -20);
+    ctx.lineTo(-50, -50);
+    ctx.lineTo(50, -50);
+    ctx.lineTo(30, -20);
+    ctx.closePath();
+    ctx.fill();
 
     // Headlights
     ctx.fillStyle = '#ffffaa';
-    ctx.fillRect(-30, -18, 10, 6);
-    ctx.fillRect(20, -18, 10, 6);
-
-    // Tail lights
-    ctx.fillStyle = '#ff3333';
-    ctx.fillRect(-30, 16, 10, 5);
-    ctx.fillRect(20, 16, 10, 5);
+    ctx.shadowColor = '#ffff88';
+    ctx.shadowBlur = 5;
+    ctx.fillRect(-34, -20, 10, 5);
+    ctx.fillRect(24, -20, 10, 5);
+    ctx.shadowBlur = 0;
 
     ctx.restore();
 

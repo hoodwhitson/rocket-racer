@@ -4,9 +4,7 @@
  * Owns all subsystems: Road, Player, UI, AudioManager.
  */
 class Game {
-  /**
-   * @param {HTMLCanvasElement} canvas
-   */
+  /** @param {HTMLCanvasElement} canvas */
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx    = canvas.getContext('2d');
@@ -17,7 +15,7 @@ class Game {
     this.ui     = new UI(canvas);
     this.audio  = new AudioManager();
 
-    // ── Game state (all mutable state lives here) ──
+    // Game state
     this.gs = {
       state:       CONSTANTS.STATE_MAIN_MENU,
       lives:       CONSTANTS.TOTAL_LIVES,
@@ -26,9 +24,16 @@ class Game {
       timeLeft:    0,
       timeLimit:   60,
       selectedCar: 0,
-      particles:   [],  // fireworks particle pool (pre-allocated)
+      particles:   [],
       fireworkTimer: 0,
       nextFirework:  0,
+      // Checkpoint state
+      checkpointsPassed: 0,
+      levelCheckpoints: [],
+      // Screen shake
+      shakeX: 0,
+      shakeY: 0,
+      shakeIntensity: 0,
     };
 
     // Pre-allocate particle pool
@@ -36,26 +41,20 @@ class Game {
       this.gs.particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '#fff', size: 2 });
     }
 
-    // Debug overlay (toggled with D key)
+    // Debug overlay
     this.debugOverlay = new DebugOverlay();
-
-    // Expose game instance for DevTools inspection
     window.RR = this;
 
-    // Input: listen for Enter and P on menus
     this._onKeyDown = this._onKeyDown.bind(this);
     document.addEventListener('keydown', this._onKeyDown);
 
-    // Touch buttons
     this._bindTouchButtons();
   }
 
-  /**
-   * Main update — called every frame with delta-time.
-   * @param {number} dt - Seconds since last frame (capped at 0.05)
-   */
+  /** @param {number} dt */
   update(dt) {
     this.ui.tick();
+    this.ui.updateCheckpoint(dt);
 
     const gs = this.gs;
 
@@ -66,24 +65,17 @@ class Game {
       case CONSTANTS.STATE_WIN_SCREEN:
         this._updateWinParticles(dt);
         break;
-
       case CONSTANTS.STATE_PAUSED:
-        // Frozen
         break;
-
       case CONSTANTS.STATE_GAMEPLAY:
         this._updateGameplay(dt);
         break;
-
       case CONSTANTS.STATE_LEVEL_COMPLETE:
         this._updateLevelComplete(dt);
         break;
     }
   }
 
-  /**
-   * Main render — called every frame.
-   */
   render() {
     const gs = this.gs;
 
@@ -91,29 +83,23 @@ class Game {
       case CONSTANTS.STATE_MAIN_MENU:
         this.ui.drawMainMenu();
         break;
-
       case CONSTANTS.STATE_CAR_SELECT:
         this.ui.drawCarSelect(gs.selectedCar);
         break;
-
       case CONSTANTS.STATE_GAMEPLAY:
         this._renderGameplay();
         break;
-
       case CONSTANTS.STATE_PAUSED:
         this._renderGameplay();
         this.ui.drawPauseOverlay();
         break;
-
       case CONSTANTS.STATE_LEVEL_COMPLETE:
         this._renderGameplay();
         this.ui.drawLevelComplete({ level: gs.level, score: gs.score });
         break;
-
       case CONSTANTS.STATE_GAME_OVER:
         this.ui.drawGameOver({ score: gs.score, level: gs.level });
         break;
-
       case CONSTANTS.STATE_WIN_SCREEN:
         this.ui.drawWinScreen({
           score: gs.score,
@@ -128,21 +114,15 @@ class Game {
   // State transitions
   // ─────────────────────────────────────────────
 
-  /**
-   * Transition to a new state with side effects.
-   * @param {string} newState
-   */
   _setState(newState) {
     const gs = this.gs;
     const prev = gs.state;
     gs.state = newState;
 
-    // --- Exit side effects ---
     if (prev === CONSTANTS.STATE_GAMEPLAY) {
       this.audio.stopEngine();
     }
 
-    // --- Enter side effects ---
     switch (newState) {
       case CONSTANTS.STATE_MAIN_MENU:
         gs.lives = CONSTANTS.TOTAL_LIVES;
@@ -150,16 +130,13 @@ class Game {
         gs.score = 0;
         gs.selectedCar = 0;
         break;
-
       case CONSTANTS.STATE_GAMEPLAY:
         this._startLevel();
         break;
-
       case CONSTANTS.STATE_WIN_SCREEN:
         this._initParticles();
         this.audio.playCelebrationFanfare();
         break;
-
       case CONSTANTS.STATE_GAME_OVER:
         this.audio.playGameOver();
         break;
@@ -170,15 +147,17 @@ class Game {
   // Gameplay
   // ─────────────────────────────────────────────
 
-  /**
-   * Initialize a level.
-   */
   _startLevel() {
     const gs = this.gs;
     const cfg = getLevel(gs.level);
 
     gs.timeLeft  = cfg.timeLimit;
     gs.timeLimit = cfg.timeLimit;
+    gs.checkpointsPassed = 0;
+    gs.levelCheckpoints = cfg.checkpoints || [];
+    gs.shakeX = 0;
+    gs.shakeY = 0;
+    gs.shakeIntensity = 0;
 
     this.road.buildTrack(cfg);
     this.road.spawnTraffic(cfg);
@@ -190,31 +169,29 @@ class Game {
     this.audio.startEngine(0);
   }
 
-  /**
-   * Update gameplay for one frame.
-   * @param {number} dt
-   */
+  /** @param {number} dt */
   _updateGameplay(dt) {
     const gs = this.gs;
 
-    // Tick timer
+    // Timer
     gs.timeLeft -= dt;
 
-    // Score accumulation
+    // Score
     gs.score += CONSTANTS.SCORE_PER_SECOND * dt * (gs.level * 0.5 + 0.5);
 
-    // Update road traffic
+    // Traffic
     this.road.updateTraffic(dt);
 
-    // Current segment (for centrifugal force)
+    // Current segment
     const segIdx = Math.floor(this.player.z / CONSTANTS.ROAD_SEGMENT_LENGTH) % CONSTANTS.ROAD_SEGMENTS;
     const currentSegment = this.road.segments[segIdx];
 
-    // Update player
+    // Player update
     const { collided } = this.player.update(dt, currentSegment, this.road.traffic);
 
     if (collided) {
       this.audio.playCrash();
+      this.audio.playCrashScreech();
       gs.lives--;
       if (gs.lives <= 0) {
         this._setState(CONSTANTS.STATE_GAME_OVER);
@@ -222,32 +199,50 @@ class Game {
       }
     }
 
-    // Update engine audio
+    // Engine audio
     this.audio.updateEngine(this.player.getSpeedPercent());
 
-    // Check finish line
+    // ── Screen shake at high speed ──
+    const speedPct = this.player.getSpeedPercent();
+    if (speedPct > 0.8 && !this.player.isCrashing()) {
+      gs.shakeIntensity = (speedPct - 0.8) * 10; // 0 to 2
+      gs.shakeX = (Math.random() - 0.5) * gs.shakeIntensity;
+      gs.shakeY = (Math.random() - 0.5) * gs.shakeIntensity * 0.5;
+    } else {
+      gs.shakeX = 0;
+      gs.shakeY = 0;
+    }
+
+    // ── Checkpoint detection ──
     const playerSegIdx = Math.floor(this.player.z / CONSTANTS.ROAD_SEGMENT_LENGTH) % CONSTANTS.ROAD_SEGMENTS;
+    if (gs.checkpointsPassed < gs.levelCheckpoints.length) {
+      const nextCP = gs.levelCheckpoints[gs.checkpointsPassed];
+      if (playerSegIdx >= nextCP.segment && playerSegIdx < nextCP.segment + 10) {
+        gs.checkpointsPassed++;
+        gs.timeLeft += nextCP.timeBonus;
+        this.ui.showCheckpoint(nextCP.timeBonus);
+        this.audio.playCheckpointBeep();
+      }
+    }
+
+    // ── Finish line ──
     if (playerSegIdx >= CONSTANTS.FINISH_SEGMENT_INDEX) {
       this._onLevelComplete();
       return;
     }
 
-    // Time expired
+    // ── Time expired ──
     if (gs.timeLeft <= 0) {
       gs.lives--;
       if (gs.lives <= 0) {
         this._setState(CONSTANTS.STATE_GAME_OVER);
       } else {
-        // Stop previous engine node before restarting the level
         this.audio.stopEngine();
         this._startLevel();
       }
     }
   }
 
-  /**
-   * Handle level completion.
-   */
   _onLevelComplete() {
     const gs = this.gs;
     gs.score += CONSTANTS.SCORE_PER_LEVEL_COMPLETE;
@@ -256,28 +251,23 @@ class Game {
     this._setState(CONSTANTS.STATE_LEVEL_COMPLETE);
   }
 
-  /**
-   * Update level complete state (waiting for input).
-   * @param {number} dt
-   */
   _updateLevelComplete(dt) {
-    // Input is handled via keydown
+    // Waiting for input
   }
 
-  /**
-   * Render the current gameplay frame (road + player + HUD).
-   */
   _renderGameplay() {
     const gs = this.gs;
     const carCfg = CONSTANTS.CAR_CONFIGS[gs.selectedCar];
     const maxSpeed = CONSTANTS.PLAYER_MAX_SPEED * carCfg.topSpeedMult;
 
-    // Road
+    // Road (with screen shake)
     this.road.render(
       this.player.z,
       this.player.x,
       this.player.speed,
-      0
+      0,
+      gs.shakeX,
+      gs.shakeY
     );
 
     // Player car
@@ -295,29 +285,21 @@ class Game {
       totalLevels: CONSTANTS.TOTAL_LEVELS,
     });
 
-    // Debug overlay (toggled with D key)
+    // Debug overlay
     this.debugOverlay.draw(this.road._proj, gs, this.player);
   }
 
   // ─────────────────────────────────────────────
-  // Win screen particles (fireworks)
+  // Win screen particles
   // ─────────────────────────────────────────────
 
-  /**
-   * Initialize / reset the particle pool.
-   */
   _initParticles() {
-    for (const p of this.gs.particles) {
-      p.active = false;
-    }
+    for (const p of this.gs.particles) p.active = false;
     this.gs.nextFirework = 0;
     this.gs.fireworkTimer = 0;
   }
 
-  /**
-   * Update win screen firework particles.
-   * @param {number} dt
-   */
+  /** @param {number} dt */
   _updateWinParticles(dt) {
     const gs = this.gs;
     const W = CONSTANTS.CANVAS_WIDTH;
@@ -333,23 +315,17 @@ class Game {
       );
     }
 
-    // Update active particles
     for (const p of gs.particles) {
       if (!p.active) continue;
       p.x  += p.vx * dt * 60;
       p.y  += p.vy * dt * 60;
-      p.vy += 0.05;  // gravity
+      p.vy += 0.05;
       p.life -= dt * 1.2;
       p.size *= 0.97;
       if (p.life <= 0 || p.size < 0.5) p.active = false;
     }
   }
 
-  /**
-   * Spawn a firework burst at (x, y).
-   * @param {number} x
-   * @param {number} y
-   */
   _spawnFirework(x, y) {
     const colors = ['#ff4444','#ffff00','#44ff44','#44aaff','#ff44ff','#ffffff','#ff8800'];
     const color = colors[Math.floor(Math.random() * colors.length)];
@@ -380,8 +356,6 @@ class Game {
   /** @param {KeyboardEvent} e */
   _onKeyDown(e) {
     const gs = this.gs;
-
-    // Initialize audio on first key press (autoplay policy)
     this.audio.init();
 
     switch (gs.state) {
@@ -447,9 +421,6 @@ class Game {
     }
   }
 
-  /**
-   * Bind touch buttons to Game state transitions (for menus).
-   */
   _bindTouchButtons() {
     const btnLeft  = document.getElementById('btn-left');
     const btnRight = document.getElementById('btn-right');
@@ -458,7 +429,6 @@ class Game {
 
     if (!btnLeft) return;
 
-    // Accel button also acts as "Enter" for menus
     btnAccel.addEventListener('pointerdown', () => {
       this.audio.init();
       const gs = this.gs;
@@ -472,7 +442,6 @@ class Game {
       else if (gs.state === CONSTANTS.STATE_WIN_SCREEN) this._setState(CONSTANTS.STATE_MAIN_MENU);
     });
 
-    // Car select: left/right
     btnLeft.addEventListener('pointerdown', () => {
       if (this.gs.state === CONSTANTS.STATE_CAR_SELECT) {
         this.gs.selectedCar = (this.gs.selectedCar - 1 + CONSTANTS.CAR_CONFIGS.length) % CONSTANTS.CAR_CONFIGS.length;
@@ -484,7 +453,6 @@ class Game {
       }
     });
 
-    // Bind gameplay controls to player
     this.player.bindTouchControls(btnLeft, btnRight, btnAccel, btnBrake);
   }
 }

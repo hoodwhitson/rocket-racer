@@ -1,79 +1,108 @@
 /**
  * ui.js
- * UI — all HUD elements, menus, and overlays drawn to canvas.
+ * UI — dashboard HUD, menus, overlays, checkpoint notifications.
  */
 class UI {
-  /**
-   * @param {HTMLCanvasElement} canvas
-   */
+  /** @param {HTMLCanvasElement} canvas */
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this._frameCount = 0;
+    this._fontCache = {};
+
+    // Checkpoint notification state
+    this._checkpointTimer = 0;
+    this._checkpointBonus = 0;
   }
 
-  /**
-   * Increment frame counter (call each game loop tick).
-   */
-  tick() {
-    this._frameCount++;
+  /** Increment frame counter. */
+  tick() { this._frameCount++; }
+
+  /** Show checkpoint notification. */
+  showCheckpoint(timeBonus) {
+    this._checkpointTimer = CONSTANTS.CHECKPOINT_DISPLAY_TIME;
+    this._checkpointBonus = timeBonus;
+  }
+
+  /** Update checkpoint timer. */
+  updateCheckpoint(dt) {
+    if (this._checkpointTimer > 0) this._checkpointTimer -= dt;
   }
 
   // ─────────────────────────────────────────────
   // MAIN MENU
   // ─────────────────────────────────────────────
 
-  /**
-   * Draw main menu screen.
-   */
   drawMainMenu() {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
     const H = CONSTANTS.CANVAS_HEIGHT;
     const fc = this._frameCount;
 
-    // Background
+    // Dark background
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
-    // Animated road stripes background
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, 0, W, H);
-    for (let i = 0; i < 12; i++) {
-      const y = ((i * 60 + fc * 2) % (H + 60)) - 60;
-      ctx.fillStyle = i % 2 === 0 ? '#222' : '#181818';
-      ctx.fillRect(0, y, W, 30);
-    }
+    // Road perspective effect
+    const horizonY = H * 0.38;
+    // Sky gradient
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+    skyGrad.addColorStop(0, '#1a0a30');
+    skyGrad.addColorStop(1, '#402050');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, horizonY);
 
-    // Title glow effect
+    // Ground (road receding)
+    const roadGrad = ctx.createLinearGradient(0, horizonY, 0, H);
+    roadGrad.addColorStop(0, '#333');
+    roadGrad.addColorStop(1, '#555');
+    ctx.fillStyle = roadGrad;
+    ctx.fillRect(0, horizonY, W, H - horizonY);
+
+    // Vanishing point road lines
+    const vpx = W / 2;
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(vpx - 2, horizonY);
+    ctx.lineTo(0, H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(vpx + 2, horizonY);
+    ctx.lineTo(W, H);
+    ctx.stroke();
+
+    // Dashed center line
+    ctx.strokeStyle = '#888';
+    ctx.setLineDash([8, 12]);
+    ctx.beginPath();
+    ctx.moveTo(vpx, horizonY);
+    ctx.lineTo(vpx, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Title with glow
     const glowIntensity = 0.6 + 0.4 * Math.sin(fc * 0.05);
     ctx.save();
     ctx.shadowColor = '#ff4400';
-    ctx.shadowBlur = 20 * glowIntensity;
-
-    // ROCKET
-    this._drawText('ROCKET', W / 2, 160, 36, '#ff4400', 'center');
-
+    ctx.shadowBlur = 25 * glowIntensity;
+    this._drawText('ROCKET', W / 2, 120, 38, '#ff4400', 'center');
     ctx.shadowColor = '#ffaa00';
-    ctx.shadowBlur = 20 * glowIntensity;
-
-    // RACER
-    this._drawText('RACER', W / 2, 220, 36, '#ffaa00', 'center');
+    ctx.shadowBlur = 25 * glowIntensity;
+    this._drawText('RACER', W / 2, 175, 38, '#ffaa00', 'center');
     ctx.restore();
 
-    // Subtitle
-    this._drawText('A RETRO RACING GAME', W / 2, 275, 9, '#888', 'center');
+    this._drawText('A RETRO RACING GAME', W / 2, 220, 8, '#888', 'center');
 
     // Blinking PRESS ENTER
     if (Math.floor(fc / 30) % 2 === 0) {
-      this._drawText('PRESS ENTER TO START', W / 2, 360, 10, '#fff', 'center');
+      this._drawText('PRESS ENTER TO START', W / 2, 310, 10, '#fff', 'center');
     }
 
-    // Controls reference
-    this._drawText('ARROWS: STEER / ACCEL / BRAKE', W / 2, 430, 7, '#555', 'center');
-    this._drawText('P: PAUSE', W / 2, 455, 7, '#555', 'center');
+    // Controls
+    this._drawText('ARROWS: STEER / ACCEL / BRAKE', W / 2, 380, 7, '#555', 'center');
+    this._drawText('P: PAUSE', W / 2, 405, 7, '#555', 'center');
 
-    // Version / credits
     this._drawText('(C) 2026 ROCKET RACER', W / 2, 560, 6, '#333', 'center');
   }
 
@@ -81,10 +110,6 @@ class UI {
   // CAR SELECT
   // ─────────────────────────────────────────────
 
-  /**
-   * Draw car selection screen.
-   * @param {number} selectedCar - Index 0–3
-   */
   drawCarSelect(selectedCar) {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
@@ -92,14 +117,12 @@ class UI {
     const fc = this._frameCount;
     const cars = CONSTANTS.CAR_CONFIGS;
 
-    // Background
     ctx.fillStyle = '#0a0a1a';
     ctx.fillRect(0, 0, W, H);
 
     this._drawText('SELECT YOUR CAR', W / 2, 50, 14, '#fff', 'center');
     this._drawText('LEFT / RIGHT ARROWS  |  ENTER TO CONFIRM', W / 2, 80, 6, '#666', 'center');
 
-    // Draw 4 car cards
     const cardW = 160;
     const cardH = 200;
     const startX = W / 2 - (cars.length * cardW + (cars.length - 1) * 10) / 2;
@@ -110,7 +133,6 @@ class UI {
       const cy = 200;
       const isSelected = i === selectedCar;
 
-      // Card background
       ctx.save();
       if (isSelected) {
         ctx.strokeStyle = car.color;
@@ -127,109 +149,136 @@ class UI {
       ctx.stroke();
       ctx.restore();
 
-      // Car miniature
       const bobY = isSelected ? Math.sin(fc * 0.08) * 4 : 0;
       this._drawMiniCar(ctx, cx, cy - 30 + bobY, car, isSelected);
 
-      // Car name
       this._drawText(car.name.toUpperCase(), cx, cy + 50, 7, isSelected ? car.color : '#aaa', 'center');
 
-      // Stats
       const statsY = cy + 70;
       this._drawStat(ctx, cx - cardW / 2 + 10, statsY,      cardW - 20, 'SPD', car.speed,    isSelected);
       this._drawStat(ctx, cx - cardW / 2 + 10, statsY + 20, cardW - 20, 'HDL', car.handling, isSelected);
       this._drawStat(ctx, cx - cardW / 2 + 10, statsY + 40, cardW - 20, 'ACC', car.accel,    isSelected);
     }
 
-    // Controls hint
     if (Math.floor(fc / 40) % 2 === 0) {
       this._drawText('PRESS ENTER TO RACE!', W / 2, H - 30, 9, '#ffaa00', 'center');
     }
   }
 
   // ─────────────────────────────────────────────
-  // HUD (in-game)
+  // HUD — Rad Racer Dashboard Style
   // ─────────────────────────────────────────────
 
   /**
-   * Draw in-game HUD.
-   * @param {object} gameState - { speed, maxSpeed, timeLeft, timeLimit, lives, level, score, totalLevels }
+   * Draw the Rad Racer-style dashboard HUD.
+   * @param {object} gs
    */
-  drawHUD(gameState) {
+  drawHUD(gs) {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
     const H = CONSTANTS.CANVAS_HEIGHT;
-    const pad = CONSTANTS.HUD_PADDING;
+    const dashH = CONSTANTS.DASHBOARD_HEIGHT;
+    const dashY = H - dashH;
 
-    // ── Speedometer (bottom-left arc) ──
-    const spdCx = 70;
-    const spdCy = H - 60;
-    const spdR  = 50;
-    const speedPct = Math.min(1, gameState.speed / gameState.maxSpeed);
+    // ── Power bar (thin colored strip above dashboard) ──
+    const speedPct = Math.min(1, gs.speed / gs.maxSpeed);
+    const barH = 4;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, dashY - barH, W, barH);
+    const barColor = speedPct > 0.8 ? '#ff2222' : speedPct > 0.5 ? '#ffaa00' : '#44ff88';
+    ctx.fillStyle = barColor;
+    ctx.fillRect(0, dashY - barH, W * speedPct, barH);
 
-    // Arc background
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(spdCx, spdCy, spdR, Math.PI * 0.75, Math.PI * 2.25);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 8;
-    ctx.stroke();
+    // ── Dashboard panel ──
+    ctx.fillStyle = 'rgba(0,0,40,0.88)';
+    ctx.fillRect(0, dashY, W, dashH);
 
-    // Speed arc
-    const arcEnd = Math.PI * 0.75 + speedPct * Math.PI * 1.5;
-    const spdColor = speedPct > 0.8 ? '#ff4444' : speedPct > 0.5 ? '#ffaa00' : '#44ff88';
-    ctx.beginPath();
-    ctx.arc(spdCx, spdCy, spdR, Math.PI * 0.75, arcEnd);
-    ctx.strokeStyle = spdColor;
-    ctx.lineWidth = 8;
-    ctx.stroke();
+    // Top border line
+    ctx.fillStyle = '#334';
+    ctx.fillRect(0, dashY, W, 2);
 
-    // Speed number
-    const mph = Math.floor(speedPct * 200);
-    this._drawText(String(mph), spdCx, spdCy + 5, 11, '#fff', 'center');
-    this._drawText('MPH', spdCx, spdCy + 18, 6, '#888', 'center');
-    ctx.restore();
+    // ── Layout: 3 columns ──
+    const colW = W / 3;
+    const textY1 = dashY + 18;
+    const textY2 = dashY + 38;
+    const textY3 = dashY + 55;
 
-    // ── Timer (top-right) ──
-    const tLeft = Math.max(0, Math.ceil(gameState.timeLeft));
-    const timerColor = tLeft <= 10 ? (Math.floor(this._frameCount / 15) % 2 ? '#ff3333' : '#ff9999') : '#fff';
-    this._drawText('TIME', W - 120, pad + 12, 8, '#888', 'left');
-    this._drawText(this._pad2(tLeft), W - 120, pad + 30, 18, timerColor, 'left');
+    // Vertical dividers
+    ctx.fillStyle = '#223';
+    ctx.fillRect(colW, dashY + 6, 1, dashH - 12);
+    ctx.fillRect(colW * 2, dashY + 6, 1, dashH - 12);
 
-    // ── Level (top-center) ──
-    this._drawText(`LEVEL ${gameState.level} / ${gameState.totalLevels}`, W / 2, pad + 20, 8, '#fff', 'center');
+    // ── Left column: TIME + LIVES ──
+    const tLeft = Math.max(0, Math.ceil(gs.timeLeft));
+    const timerFlash = tLeft <= 10 && Math.floor(this._frameCount / 12) % 2;
+    const timerColor = tLeft <= 10 ? (timerFlash ? '#ff3333' : '#ff9999') : '#FFFFFF';
 
-    // ── Score (top-left) ──
-    this._drawText('SCORE', pad, pad + 12, 7, '#888', 'left');
-    this._drawText(String(Math.floor(gameState.score)), pad, pad + 30, 10, '#ffff00', 'left');
+    this._drawText('TIME', colW * 0.5, textY1, 7, '#8888AA', 'center');
+    this._drawText(this._pad3(tLeft), colW * 0.5, textY2, 16, timerColor, 'center');
 
-    // ── Lives (bottom-right) ──
-    const livesX = W - pad;
-    const livesY = H - pad - 10;
-    this._drawText('LIVES', livesX - 10, livesY - 20, 6, '#888', 'right');
+    // Lives as small car icons
+    const livesStartX = colW * 0.5 - (gs.lives - 1) * 10;
     for (let i = 0; i < CONSTANTS.TOTAL_LIVES; i++) {
-      const alive = i < gameState.lives;
-      const hx = livesX - i * 22;
-      this._drawHeart(ctx, hx, livesY, 14, alive ? '#ff3366' : '#333');
+      const alive = i < gs.lives;
+      this._drawMiniCarIcon(ctx, livesStartX + i * 20, textY3, alive);
     }
+
+    // ── Center column: KM/H + STAGE ──
+    const kmh = Math.floor(speedPct * 300);
+    this._drawText('KM/H', colW * 1.5, textY1, 7, '#8888AA', 'center');
+    this._drawText(String(kmh), colW * 1.5, textY2, 16, '#FFFFFF', 'center');
+    this._drawText(`STAGE ${gs.level}`, colW * 1.5, textY3, 7, '#AAAACC', 'center');
+
+    // ── Right column: SCORE ──
+    this._drawText('SCORE', colW * 2.5, textY1, 7, '#8888AA', 'center');
+    this._drawText(String(Math.floor(gs.score)), colW * 2.5, textY2, 12, '#FFFF00', 'center');
+
+    // ── Checkpoint notification ──
+    if (this._checkpointTimer > 0) {
+      this._drawCheckpointNotification();
+    }
+  }
+
+  _drawCheckpointNotification() {
+    const ctx = this.ctx;
+    const W = CONSTANTS.CANVAS_WIDTH;
+    const H = CONSTANTS.CANVAS_HEIGHT;
+    const t = this._checkpointTimer / CONSTANTS.CHECKPOINT_DISPLAY_TIME;
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, t * 2);
+
+    // "CHECKPOINT" banner
+    ctx.fillStyle = 'rgba(255,215,0,0.15)';
+    ctx.fillRect(0, H * 0.3, W, 60);
+
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur = 15;
+    this._drawText('CHECKPOINT', W / 2, H * 0.3 + 20, 18, '#FFD700', 'center');
+    ctx.shadowBlur = 0;
+    this._drawText(`TIME +${this._checkpointBonus}s`, W / 2, H * 0.3 + 45, 10, '#FFFFFF', 'center');
+
+    ctx.restore();
+  }
+
+  _drawMiniCarIcon(ctx, x, y, alive) {
+    ctx.fillStyle = alive ? '#44ff88' : '#333';
+    // Tiny car shape
+    ctx.fillRect(x - 5, y - 3, 10, 6);
+    ctx.fillRect(x - 3, y - 6, 6, 4);
   }
 
   // ─────────────────────────────────────────────
   // PAUSE OVERLAY
   // ─────────────────────────────────────────────
 
-  /**
-   * Draw pause overlay (semi-transparent, over gameplay).
-   */
   drawPauseOverlay() {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
     const H = CONSTANTS.CANVAS_HEIGHT;
 
-    ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, H);
-    ctx.restore();
 
     this._drawText('PAUSED', W / 2, H / 2 - 20, 24, '#fff', 'center');
     this._drawText('PRESS P TO RESUME', W / 2, H / 2 + 30, 9, '#aaa', 'center');
@@ -239,20 +288,14 @@ class UI {
   // LEVEL COMPLETE
   // ─────────────────────────────────────────────
 
-  /**
-   * Draw level complete overlay.
-   * @param {object} gs - { level, score, bonusTime }
-   */
   drawLevelComplete(gs) {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
     const H = CONSTANTS.CANVAS_HEIGHT;
     const fc = this._frameCount;
 
-    ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, W, H);
-    ctx.restore();
 
     const pulse = 1 + 0.05 * Math.sin(fc * 0.1);
     ctx.save();
@@ -273,10 +316,6 @@ class UI {
   // GAME OVER
   // ─────────────────────────────────────────────
 
-  /**
-   * Draw game over screen.
-   * @param {object} gs - { score, level }
-   */
   drawGameOver(gs) {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
@@ -286,7 +325,6 @@ class UI {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
-    // Animated red scanlines
     for (let y = 0; y < H; y += 4) {
       ctx.fillStyle = `rgba(80,0,0,${0.15 + 0.05 * Math.sin(y * 0.1 + fc * 0.05)})`;
       ctx.fillRect(0, y, W, 2);
@@ -299,7 +337,7 @@ class UI {
     ctx.restore();
 
     this._drawText(`SCORE: ${Math.floor(gs.score)}`, W / 2, H / 2, 12, '#fff', 'center');
-    this._drawText(`REACHED LEVEL ${gs.level}`, W / 2, H / 2 + 40, 9, '#aaa', 'center');
+    this._drawText(`REACHED STAGE ${gs.level}`, W / 2, H / 2 + 40, 9, '#aaa', 'center');
 
     if (Math.floor(fc / 40) % 2 === 0) {
       this._drawText('PRESS ENTER TO RESTART', W / 2, H / 2 + 100, 9, '#ff8888', 'center');
@@ -310,10 +348,6 @@ class UI {
   // WIN SCREEN
   // ─────────────────────────────────────────────
 
-  /**
-   * Draw win/celebration screen.
-   * @param {object} gs - { score, carName, particles }
-   */
   drawWinScreen(gs) {
     const ctx = this.ctx;
     const W = CONSTANTS.CANVAS_WIDTH;
@@ -323,33 +357,33 @@ class UI {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
-    // Draw firework particles
+    // Firework particles
     if (gs.particles) {
       for (const p of gs.particles) {
         if (!p.active) continue;
-        ctx.save();
+        const prevAlpha = ctx.globalAlpha;
         ctx.globalAlpha = p.life;
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
-        ctx.restore();
+        ctx.globalAlpha = prevAlpha;
       }
     }
 
-    // Scrolling CONGRATULATIONS banner
+    // Scrolling banner
     const bannerText = '*** CONGRATULATIONS! ***';
-    ctx.font = `bold 22px 'Press Start 2P', monospace`;
+    const fontStr = this._getFont(22);
+    ctx.font = fontStr;
     const textW = ctx.measureText(bannerText).width;
     const bannerX = W - ((fc * 2) % (W + textW + 20));
-    const bannerY = 80;
 
     ctx.save();
     ctx.shadowColor = '#ffff00';
     ctx.shadowBlur = 15;
     ctx.fillStyle = '#ffff00';
-    ctx.font = `bold 22px 'Press Start 2P', monospace`;
-    ctx.fillText(bannerText, bannerX, bannerY);
+    ctx.font = fontStr;
+    ctx.fillText(bannerText, bannerX, 80);
     ctx.restore();
 
     // Stats panel
@@ -367,7 +401,7 @@ class UI {
     this._drawText('YOU WIN!', W / 2, panelY + 35, 18, '#44ff44', 'center');
     this._drawText(`CAR: ${gs.carName || 'BALANCED'}`, W / 2, panelY + 75, 9, '#fff', 'center');
     this._drawText(`FINAL SCORE: ${Math.floor(gs.score)}`, W / 2, panelY + 105, 9, '#ffff00', 'center');
-    this._drawText('ALL 10 LEVELS COMPLETE!', W / 2, panelY + 135, 8, '#aaa', 'center');
+    this._drawText('ALL 10 STAGES COMPLETE!', W / 2, panelY + 135, 8, '#aaa', 'center');
 
     if (Math.floor(fc / 40) % 2 === 0) {
       this._drawText('PRESS ENTER TO PLAY AGAIN', W / 2, H - 50, 9, '#fff', 'center');
@@ -378,29 +412,24 @@ class UI {
   // Private helpers
   // ─────────────────────────────────────────────
 
-  /**
-   * Draw text using Press Start 2P font.
-   * @param {string} text
-   * @param {number} x
-   * @param {number} y
-   * @param {number} size - Font size in px
-   * @param {string} color
-   * @param {string} align - 'left' | 'center' | 'right'
-   */
+  _getFont(size) {
+    if (!this._fontCache[size]) {
+      this._fontCache[size] = `${size}px 'Press Start 2P', monospace`;
+    }
+    return this._fontCache[size];
+  }
+
   _drawText(text, x, y, size, color, align) {
     const ctx = this.ctx;
     ctx.save();
     ctx.fillStyle = color;
-    ctx.font = `${size}px 'Press Start 2P', monospace`;
+    ctx.font = this._getFont(size);
     ctx.textAlign = align || 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, x, y);
     ctx.restore();
   }
 
-  /**
-   * Draw a stat bar (label + filled blocks).
-   */
   _drawStat(ctx, x, y, w, label, value, highlight) {
     const maxVal = 5;
     const labelW = 30;
@@ -412,19 +441,14 @@ class UI {
     }
   }
 
-  /**
-   * Draw a small car icon for car select.
-   */
   _drawMiniCar(ctx, cx, cy, cfg, selected) {
     const w = 60, h = 40;
     ctx.save();
     ctx.translate(cx, cy);
 
-    // Body
     ctx.fillStyle = cfg.bodyColor;
     ctx.fillRect(-w / 2, -h * 0.3, w, h * 0.6);
 
-    // Cabin
     ctx.fillStyle = cfg.color;
     ctx.beginPath();
     ctx.moveTo(-w * 0.25, -h * 0.3);
@@ -434,7 +458,6 @@ class UI {
     ctx.closePath();
     ctx.fill();
 
-    // Windshield
     ctx.fillStyle = 'rgba(150,220,255,0.7)';
     ctx.beginPath();
     ctx.moveTo(-w * 0.18, -h * 0.32);
@@ -444,13 +467,11 @@ class UI {
     ctx.closePath();
     ctx.fill();
 
-    // Wheels
     ctx.fillStyle = '#111';
     ctx.fillRect(-w * 0.45, -h * 0.15, w * 0.18, h * 0.5);
     ctx.fillRect(w * 0.27, -h * 0.15, w * 0.18, h * 0.5);
 
     if (selected) {
-      // Glow outline
       ctx.strokeStyle = cfg.color;
       ctx.lineWidth = 2;
       ctx.shadowColor = cfg.color;
@@ -461,26 +482,6 @@ class UI {
     ctx.restore();
   }
 
-  /**
-   * Draw a heart icon for lives display.
-   */
-  _drawHeart(ctx, x, y, size, color) {
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    const s = size / 2;
-    ctx.moveTo(x, y + s * 0.5);
-    ctx.bezierCurveTo(x, y - s, x - s * 2, y - s, x - s * 2, y);
-    ctx.bezierCurveTo(x - s * 2, y + s, x, y + s * 1.5, x, y + s * 1.5);
-    ctx.bezierCurveTo(x, y + s * 1.5, x + s * 2, y + s, x + s * 2, y);
-    ctx.bezierCurveTo(x + s * 2, y - s, x, y - s, x, y + s * 0.5);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  /**
-   * Draw a rounded rectangle path.
-   */
   _roundRect(x, y, w, h, r) {
     const ctx = this.ctx;
     ctx.beginPath();
@@ -496,12 +497,13 @@ class UI {
     ctx.closePath();
   }
 
-  /**
-   * Zero-pad a number to 2 digits.
-   * @param {number} n
-   * @returns {string}
-   */
   _pad2(n) {
     return n < 10 ? '0' + n : String(n);
+  }
+
+  _pad3(n) {
+    if (n < 10) return '00' + n;
+    if (n < 100) return '0' + n;
+    return String(n);
   }
 }
