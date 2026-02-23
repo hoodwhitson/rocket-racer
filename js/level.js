@@ -29,7 +29,7 @@ const LEVELS = [
     rumbleLight: '#FFFFFF',
     rumbleDark: '#DD2222',
     timeLimit: 90,
-    trafficDensity: 4,
+    trafficDensity: 8,
     trafficSpeedMult: 0.6,
     scenerySet: ['palmTree', 'billboard', 'rock'],
     background: {
@@ -81,7 +81,7 @@ const LEVELS = [
     rumbleLight: '#FF8800',
     rumbleDark: '#FF2200',
     timeLimit: 85,
-    trafficDensity: 6,
+    trafficDensity: 10,
     trafficSpeedMult: 0.7,
     scenerySet: ['lampPost', 'billboard', 'building'],
     background: {
@@ -132,7 +132,7 @@ const LEVELS = [
     rumbleLight: '#FFFFFF',
     rumbleDark: '#DD2222',
     timeLimit: 80,
-    trafficDensity: 7,
+    trafficDensity: 12,
     trafficSpeedMult: 0.75,
     scenerySet: ['cactus', 'rock', 'billboard'],
     background: {
@@ -183,7 +183,7 @@ const LEVELS = [
     rumbleLight: '#FFFFFF',
     rumbleDark: '#DD2222',
     timeLimit: 78,
-    trafficDensity: 8,
+    trafficDensity: 14,
     trafficSpeedMult: 0.8,
     scenerySet: ['pineTree', 'rock', 'billboard'],
     background: {
@@ -238,7 +238,7 @@ const LEVELS = [
     rumbleLight: '#FFFFFF',
     rumbleDark: '#FF2200',
     timeLimit: 75,
-    trafficDensity: 9,
+    trafficDensity: 16,
     trafficSpeedMult: 0.85,
     scenerySet: ['palmTree', 'rock', 'billboard'],
     background: {
@@ -294,7 +294,7 @@ const LEVELS = [
     rumbleLight: '#FFFFFF',
     rumbleDark: '#FF2200',
     timeLimit: 72,
-    trafficDensity: 10,
+    trafficDensity: 18,
     trafficSpeedMult: 0.9,
     scenerySet: ['rock', 'cactus', 'billboard'],
     background: {
@@ -348,7 +348,7 @@ const LEVELS = [
     rumbleLight: '#FFDD00',
     rumbleDark: '#FF4400',
     timeLimit: 68,
-    trafficDensity: 12,
+    trafficDensity: 20,
     trafficSpeedMult: 0.95,
     scenerySet: ['pineTree', 'rock', 'billboard'],
     background: {
@@ -405,7 +405,7 @@ const LEVELS = [
     rumbleLight: '#FFFFFF',
     rumbleDark: '#4488FF',
     timeLimit: 65,
-    trafficDensity: 11,
+    trafficDensity: 20,
     trafficSpeedMult: 0.95,
     scenerySet: ['pineTree', 'rock', 'billboard'],
     background: {
@@ -462,7 +462,7 @@ const LEVELS = [
     rumbleLight: '#FF8800',
     rumbleDark: '#FF2200',
     timeLimit: 60,
-    trafficDensity: 15,
+    trafficDensity: 25,
     trafficSpeedMult: 1.1,
     scenerySet: ['lampPost', 'billboard', 'building'],
     background: {
@@ -520,7 +520,7 @@ const LEVELS = [
     rumbleLight: '#FFFF00',
     rumbleDark: '#FF00FF',
     timeLimit: 55,
-    trafficDensity: 20,
+    trafficDensity: 30,
     trafficSpeedMult: 1.3,
     scenerySet: ['palmTree', 'pineTree', 'rock', 'billboard', 'cactus'],
     background: {
