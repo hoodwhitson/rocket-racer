@@ -165,8 +165,9 @@ class Road {
     const sx = shakeX || 0;
     const sy = shakeY || 0;
 
-    // Player's current segment
+    // Player's current segment + sub-segment fraction for smooth scrolling
     const startSegIdx = Math.floor(playerZ / segLen) % total;
+    const zFraction = (playerZ / segLen) - Math.floor(playerZ / segLen);
     this._playerSegmentIndex = startSegIdx;
 
     // ── Sky ─────────────────────────────────────────────────────
@@ -184,7 +185,8 @@ class Road {
     for (let i = 0; i < drawLen; i++) {
       const segIdx = (startSegIdx + i) % total;
       const seg    = this.segments[segIdx];
-      const depth  = i + 1;
+      const depth  = i + (1 - zFraction);
+      if (depth <= 0.01) continue;  // skip degenerate near-zero depth
       const scale  = camD / depth;
       const screenW = scale * roadHalfW * (W / 2);
       const screenX = W / 2 + xOffset - playerX * screenW + sx;
