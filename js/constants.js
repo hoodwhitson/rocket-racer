@@ -46,7 +46,7 @@ const CONSTANTS = {
   // Player physics (per 60hz tick; multiply by dt*60 in update)
   PLAYER_MAX_SPEED: 1440,         // world units / tick at 60fps (3x of 480)
   PLAYER_ACCEL: 16.5,
-  PLAYER_BRAKE: 8.0,
+  PLAYER_BRAKE: 24.0,
   PLAYER_DECEL: 2.5,              // natural friction
   PLAYER_STEER_SPEED: 0.05,
   CENTRIFUGAL_FORCE: 0.3,
